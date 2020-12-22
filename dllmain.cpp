@@ -230,7 +230,7 @@ HRESULT __stdcall hookedEndScene(IDirect3DDevice9* pDevice) {
         res = D3DXCreateTextureFromFile(pDevice, "flood.png", &flood);
         if (res != D3D_OK)
             std::cout << "Error loading Img: " << res << std::endl;
-        res = D3DXCreateTextureFromFile(pDevice, "jackal.png", &flood);
+        res = D3DXCreateTextureFromFile(pDevice, "jackal.png", &jackal);
         if (res != D3D_OK)
             std::cout << "Error loading Img: " << res << std::endl;
 
