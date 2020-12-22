@@ -51,6 +51,17 @@ D3D9Helper d3D9Helper;
 //Menu
 bool showMenu = false;
 
+//Radar
+bool showRadar = false;
+float scale = 1;
+#define IM_MAX(A, B) (((A) >= (B)) ? (A) : (B))
+struct CustomConstraints
+{
+    // Helper functions to demonstrate programmatic constraints
+    static void Square(ImGuiSizeCallbackData* data) { data->DesiredSize.x = data->DesiredSize.y = IM_MAX(data->DesiredSize.x, data->DesiredSize.y); }
+    static void Step(ImGuiSizeCallbackData* data) { float step = (float)(int)(intptr_t)data->UserData; data->DesiredSize = ImVec2((int)(data->DesiredSize.x / step + 0.5f) * step, (int)(data->DesiredSize.y / step + 0.5f) * step); }
+};
+
 //ESP
 bool drawESP = false;
 std::vector<EntityEx> entities;
@@ -126,25 +137,25 @@ LRESULT __stdcall WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam){
 }
 
 std::vector<EntityEx> loadEntities() {
-    int failCounter = 0;
+    //int failCounter = 0;
     std::vector<EntityEx> entities;
     //int nEntites = *(__int16*)(objectTableBase - nEntitesOffset);
     //std::cout << "#Entites according to memory " << nEntites << std::endl;
-    for (int i = 0; i < 9999; i++) {
+    for (int i = 0; i < 2048; i++) {
         uintptr_t pointer = *(uintptr_t*)(pObjectTableBase + 0x08 + i * 12);
         if (pointer && pointer > 0x400506EC) {
-            failCounter = 0;
+            //failCounter = 0;
             Entity* entity = (Entity*)pointer;
             __int16 typeID = *(__int16*)(pObjectTableBase + 0x08 + i * 12 - 0x02);
             //std::cout << std::hex << pointer << std::endl;
             if(entity->health > 0)
                 entities.emplace_back(entity, typeID);
         }
-        else {
-            failCounter++;
-        }
-        if (failCounter > 5)
-            return entities;
+        //else {
+        //    failCounter++;
+        //}
+        //if (failCounter > 20)
+        //    return entities;
     }
     //std::cout << "#Entites found: " << std::dec << entities.size() << std::endl;
     return entities;
@@ -154,6 +165,7 @@ bool init = false;
 int x = 0;
 int y = 0;
 
+LPDIRECT3DTEXTURE9 combatFlood, flood, jackal;
 HRESULT __stdcall hookedEndScene(IDirect3DDevice9* pDevice) {
     d3D9Helper.pDevice = pDevice;
 
@@ -162,9 +174,12 @@ HRESULT __stdcall hookedEndScene(IDirect3DDevice9* pDevice) {
     //    d3D9Helper.drawText(lines.at(i), menuX + padding, menuY + padding + i * lineHeight, D3DCOLOR_ARGB(255, 153, 255, 153));
     //}
 
+    if (drawESP || showRadar) {
+        entities = loadEntities();
+    }
+
     //ESP
     if (drawESP) {
-        entities = loadEntities();
         for (EntityEx entityEx : entities) {
             if (entityEx.entity) {
                 Vector3 feetCoords = cameraEx.WorldToScreen(entityEx.entity->feet);
@@ -174,7 +189,7 @@ HRESULT __stdcall hookedEndScene(IDirect3DDevice9* pDevice) {
                     float heightEntity = abs(feetCoords.y - torsoCoords.y)  * 2;
                     //text
                     std::string str = "health: " + std::to_string((int)(entityEx.entity->health * 100));
-                    //str = "typeID: " + std::to_string(entity.typeID);
+                    str = "typeID: " + std::to_string(entityEx.typeID);
                     d3D9Helper.drawText(str, torsoCoords.x -20, torsoCoords.y - heightEntity / 1.2, D3DCOLOR_ARGB(255, 153, 255, 153));
                     //box
                     D3DCOLOR boxColor = D3DCOLOR_ARGB(255, 255, 0, 0); //red
@@ -207,40 +222,133 @@ HRESULT __stdcall hookedEndScene(IDirect3DDevice9* pDevice) {
         }
 
         //pWndProc = (WNDPROC)SetWindowLongPtr(window, GWL_WNDPROC, (LONG_PTR)WndProc);
+
+        //load Textures:
+        HRESULT res = D3DXCreateTextureFromFile(pDevice, "combatFlood.png", &combatFlood);
+        if (res != D3D_OK)
+            std::cout << "Error loading Img: " << res << std::endl;
+        res = D3DXCreateTextureFromFile(pDevice, "flood.png", &flood);
+        if (res != D3D_OK)
+            std::cout << "Error loading Img: " << res << std::endl;
+        res = D3DXCreateTextureFromFile(pDevice, "jackal.png", &flood);
+        if (res != D3D_OK)
+            std::cout << "Error loading Img: " << res << std::endl;
+
         init = true;
     }
 
 
     //ImGui Main Loop
-    if (showMenu) {
-        ImGuiIO& io = ImGui::GetIO();
-        x = *(int*)(0x00718F84);
-        y = *(int*)(0x00718F88);
-        io.WantSetMousePos = true;
-        io.MousePos.x = x *cameraEx.windowWidth/640;
-        io.MousePos.y = y *cameraEx.windowHeigth/480;
-        io.MouseDrawCursor = true;
-        SetCursor(NULL);
+    ImGuiIO& io = ImGui::GetIO();
+    io.MouseDrawCursor = false;
+    if (showMenu || showRadar) {
+
+        if (showMenu) {
+            x = *(int*)(0x00718F84);
+            y = *(int*)(0x00718F88);
+            io.WantSetMousePos = true;
+            io.MousePos.x = x * cameraEx.windowWidth / 640;
+            io.MousePos.y = y * cameraEx.windowHeigth / 480;
+            io.MouseDrawCursor = true;
+            SetCursor(NULL);
+        }
 
         ImGui_ImplDX9_NewFrame();
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
-        ImGui::SetNextWindowPos(ImVec2(100, 200));
-        ImGui::SetNextWindowSize(ImVec2(200, 200));
 
-        ImGui::Begin("Halo CE Trainer");
-        ImGui::Text("Options:");
-        ImGui::Checkbox("ESP", &drawESP);
-        //ImGui::Button("test");
-        //ImGui::Button("test");
-        //ImGui::Button("test");
-        //ImGui::ShowDemoWindow();
-        ImGui::End();
+        if (showMenu) {
+            ImGui::SetNextWindowPos(ImVec2(100, 200), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize(ImVec2(200, 200), ImGuiCond_FirstUseEver);
+
+            ImGui::Begin("Halo CE Trainer",&showMenu);
+            ImGui::Text("Options:");
+            ImGui::Checkbox("ESP", &drawESP);
+            ImGui::Checkbox("Radar", &showRadar);
+            //ImGui::Button("test");
+            //ImGui::Button("test");
+            //ImGui::Button("test");
+            //ImGui::ShowDemoWindow();
+            ImGui::End();
+        }
+
+#pragma region Draw Radar
+        if (showRadar) {
+
+
+            ImGui::SetNextWindowPos(ImVec2(400, 200), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize(ImVec2(300, 300), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2(FLT_MAX, FLT_MAX), CustomConstraints::Square);
+
+            ImGui::Begin("Radar", &showRadar);
+            ImGui::DragFloat("Scale", &scale, 0.005f, -10.0f, 10.0f, "%.3f", ImGuiSliderFlags_None);
+
+                ImGui::BeginChild("ChildL");
+                ImVec2 canvas_p0 = ImGui::GetCursorScreenPos();      // ImDrawList API uses screen coordinates!
+                ImVec2 canvas_sz = ImGui::GetContentRegionAvail();   // Resize canvas to what's available
+                if (canvas_sz.x < 50.0f) canvas_sz.x = 50.0f;
+                if (canvas_sz.y < 50.0f) canvas_sz.y = 50.0f;
+                ImVec2 canvas_p1 = ImVec2(canvas_p0.x + canvas_sz.x, canvas_p0.y + canvas_sz.y);
+                ImVec2 canvas_midpoint = ImVec2(canvas_p0.x + canvas_sz.x / 2, canvas_p0.y + canvas_sz.y / 2);
+
+                // Draw border and background color
+                ImDrawList* draw_list = ImGui::GetWindowDrawList();
+                draw_list->AddRectFilled(canvas_p0, canvas_p1, IM_COL32(50, 50, 50, 255));
+                draw_list->AddRect(canvas_p0, canvas_p1, IM_COL32(255, 255, 255, 255));
+
+                //circles
+                int nCircles = 10;
+                for (int i = 1; i < nCircles; i++) {
+                    draw_list->AddCircle(canvas_midpoint, canvas_sz.x / (2*nCircles) * i, ImColor(51, 255, 0));
+                }
+
+                //Draw Points on radar
+                for (EntityEx entityEx : entities) {
+                    if (entityEx.entity) {
+                        Vector3 coords = cameraEx.WorldToRadar(entityEx.entity->feet, scale);
+                        ImVec2 coords2d = ImVec2(coords.x + canvas_midpoint.x, coords.y + canvas_midpoint.y);
+                        std::string str = "health: " + std::to_string((int)(entityEx.entity->health * 100));
+                        //str = "typeID: " + std::to_string(entity.typeID);
+                        //d3D9Helper.drawText(str, torsoCoords.x - 20, torsoCoords.y - heightEntity / 1.2, D3DCOLOR_ARGB(255, 153, 255, 153));
+                        //box
+                        //D3DCOLOR boxColor = D3DCOLOR_ARGB(255, 255, 0, 0); //red
+                        if (entityEx.typeID == 3680) {//marine
+                            draw_list->AddCircleFilled(coords2d, 5, ImColor(0, 0, 255));//blue
+                        }
+                        else if (entityEx.typeID == 6000) { //Combat Flood
+                            //draw_list->AddCircleFilled(coords2d, 5, ImColor(153, 255, 153));//bright green     
+                            ImVec2 min = ImVec2(coords2d.x - 15*scale, coords2d.y - 19 * scale);
+                            ImVec2 max = ImVec2(coords2d.x + 15 * scale, coords2d.y + 19 * scale);
+                            draw_list->AddImage((void*)combatFlood, min, max);
+                        }
+                        else if (entityEx.typeID == 2868) { //Infection Flood
+                            ImVec2 min = ImVec2(coords2d.x - 15 * scale, coords2d.y - 15 * scale);
+                            ImVec2 max = ImVec2(coords2d.x + 15 * scale, coords2d.y + 15 * scale);
+                            draw_list->AddImage((void*)flood, min, max);
+                        }
+                        else if (entityEx.typeID == 4492) { //Jackal (Shield Guy)
+                            ImVec2 min = ImVec2(coords2d.x - 19 * scale, coords2d.y - 15 * scale);
+                            ImVec2 max = ImVec2(coords2d.x + 19 * scale, coords2d.y + 15 * scale);
+                            draw_list->AddImage((void*)jackal, min, max);
+                        }
+
+                        else {
+                            draw_list->AddCircleFilled(coords2d, 5, ImColor(255, 0, 0));//red
+                        }
+                        //d3D9Helper.drawRectangle(feetCoords.x - widthEntity / 2, torsoCoords.y - heightEntity / 2, widthEntity, heightEntity, boxColor);
+                    }
+                }
+                ImGui::EndChild();
+
+            ImGui::End();
+        }
+#pragma endregion
 
         ImGui::EndFrame();
         ImGui::Render();
         ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
     }
+
 
     return pEndScene(pDevice); // call original endScene 
 }
@@ -368,14 +476,14 @@ HRESULT __stdcall hkGetDeviceState(IDirectInputDevice8A* lpDevice, DWORD cbData,
 }
 
 DWORD WINAPI Menue(HINSTANCE hModule) {
-    //AllocConsole();
-    //FILE* fp;
-    //freopen_s(&fp, "CONOUT$", "w", stdout); //sets cout to be used with our newly created console
+    AllocConsole();
+    FILE* fp;
+    freopen_s(&fp, "CONOUT$", "w", stdout); //sets cout to be used with our newly created console
 
     if (!d3D9Helper.initVTable()) {
         std::cout << "could not init d3D9Helper exiting!" << std::endl;
         Sleep(1000);
-        //fclose(fp);
+        fclose(fp);
         FreeConsole();
         CreateThread(0, 0, EjectThread, 0, 0, 0);
         return 0;
@@ -429,8 +537,8 @@ DWORD WINAPI Menue(HINSTANCE hModule) {
     }
     std::cout << "ight imma head out" << std::endl;
     Sleep(1000);
-    //fclose(fp);
-    //FreeConsole();
+    fclose(fp);
+    FreeConsole();
     CreateThread(0, 0, EjectThread, 0, 0, 0);
     return 0;
 }

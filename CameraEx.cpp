@@ -23,7 +23,6 @@ Vector3 CameraEx::WorldToScreen(Vector3 coord){
 		relYaw -= 2 * D3DX_PI;
 	if (relYaw < -D3DX_PI)
 		relYaw += 2 * D3DX_PI;
-	// [/Difference]
 
 	float objPitch = asin(camToObj.z);
 	float camPitch = asin(camera->lookAt.z);
@@ -39,4 +38,25 @@ Vector3 CameraEx::WorldToScreen(Vector3 coord){
 	y = (y + 1) / 2;
 
 	return { x * windowWidth, y * windowHeigth, distToObj };
+}
+
+Vector3 CameraEx::WorldToRadar(Vector3 coord, double scale){
+	D3DXVECTOR3 camToObj(coord.x - camera->World.x, coord.y - camera->World.y, coord.z - camera->World.z);
+	float dist2d = sqrt(camToObj.x * camToObj.x + camToObj.y * camToObj.y);
+	D3DXVec3Normalize(&camToObj, &camToObj);
+
+	// All angles are in radians, -PI<angle<PI, and no i dont know which could be equal to. but who cares - it's a float so it's impossible.
+	float camYaw = atan2f(camera->lookAt.y, camera->lookAt.x);
+	float objYaw = atan2f(camToObj.y, camToObj.x);
+
+	// Relative(to cam) yaw ends up from -2 PI < yaw < 2 PI, but we want it from -PI<yaw<PI
+	float relYaw = camYaw - objYaw - D3DX_PI/2; //+ D3DX_PI/2 = rotating from x axis to y axis 
+	if (relYaw > D3DX_PI) // yaw>180 degrees. convert to negative, smaller.
+		relYaw -= 2 * D3DX_PI;
+	if (relYaw < -D3DX_PI)
+		relYaw += 2 * D3DX_PI;
+
+	Vector3 radarCoords = { scale * 5 * dist2d * cos(relYaw), scale * 5 * dist2d * sin(relYaw), coord.z };
+
+	return radarCoords;
 }

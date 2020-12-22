@@ -14,5 +14,7 @@ public:
 	CameraEx();
 
 	Vector3 WorldToScreen(Vector3 coord);
+
+	Vector3 WorldToRadar(Vector3 coord, double scale);
 };
 
